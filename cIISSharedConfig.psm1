@@ -5,7 +5,7 @@ enum Ensure
 }
 
 [DscResource()]
-class COGITO_xIISSharedConfig
+class cIISSharedConfig
 {
 
 	[DscProperty(Key)]
@@ -18,20 +18,19 @@ class COGITO_xIISSharedConfig
 	[string]$PhysicalPath
 	
 	[DscProperty(Mandatory)]
-	[PSCredential]$User
+	[PSCredential]$UserCredential
 	
 	[DscProperty(Mandatory)]
 	[SecureString]$KeyEncryptionPassword
 
 	[DscProperty()]
-	[switch]$DontCopyRemoteKeys
+	[bool]$DontCopyRemoteKeys = $false
 
 	<#
 		This method returns a hashtable with the current IIS shared configuration information, parsed.
 	#>
 	[Hashtable] GetIISSharedConfig()
 	{
-		$c = Get-IISSharedConfig
 		$c = ConvertFrom-StringData (Get-IISSharedConfig).Replace('\', '\\')
 		
 		return @{
@@ -40,35 +39,28 @@ class COGITO_xIISSharedConfig
 			UserName = $c['UserName']
 		}
 	}
-	
-    <#
-        This method is equivalent of the Get-TargetResource script function.
-        The implementation should use the keys to find appropriate resources.
-        This method returns an instance of this class with the updated key properties.
-    #>
-	[COGITO_xIISSharedConfig] Get()
-	{
-		$c = $this.GetIISSharedConfig();
-
-		$this.Ensure = if ($c.Enabled) { [Ensure]::Present } else { [Ensure]::Absent }
-		$this.PhysicalPath = $c.PhysicalPath
-
-		return $this
-	}
 
 	<#
 		Enables the IIS shared configuration.
 	#>
-	[Hashtable] EnableIISSharedConfig([string]$PhysicalPath, [PSCredential]$User, [SecureString]$KeyEncryptionPassword, [bool]$DontCopyRemoteKeys)
+	[Hashtable] EnableIISSharedConfig(
+		[string]$PhysicalPath, 
+		[PSCredential]$UserCredential, 
+		[SecureString]$KeyEncryptionPassword, 
+		[bool]$DontCopyRemoteKeys)
 	{
-		Enable-IISSharedConfig `
-			-PhysicalPath $PhysicalPath `
-			-UserName $User.UserName `
-			-Password (ConvertTo-SecureString -AsPlainText -Force $User.GetNetworkCredential().Password) `
-			-KeyEncryptionPassword $KeyEncryptionPassword
+		$c = $this.GetIISSharedConfig()
+		if ($c) {
+			Write-Verbose 'Enabling IIS Shared Configuration...'
+			Enable-IISSharedConfig `
+				-PhysicalPath $PhysicalPath `
+				-UserName $UserCredential.UserName `
+				-Password (ConvertTo-SecureString -AsPlainText -Force $UserCredential.GetNetworkCredential().Password) `
+				-KeyEncryptionPassword $KeyEncryptionPassword
+			$c = $this.GetIISSharedConfig()
+		}
 
-		# return current configuration state
-		return $this.GetIISSharedConfig()
+		return $c
 	}
 
 	<#
@@ -80,10 +72,23 @@ class COGITO_xIISSharedConfig
 		if ($c) {
 			Write-Verbose 'Disabling IIS Shared Configuration...'
 			Disable-IISSharedConfig
+			$c = $this.GetIISSharedConfig();
 		}
 		
-		# return current configuration state
-		return $this.GetIISSharedConfig()
+		return $c
+	}
+	
+    <#
+        This method is equivalent of the Get-TargetResource script function.
+        The implementation should use the keys to find appropriate resources.
+        This method returns an instance of this class with the updated key properties.
+    #>
+	[cIISSharedConfig] Get()
+	{
+		$c = $this.GetIISSharedConfig();
+		$this.Ensure = if ($c.Enabled) { [Ensure]::Present } else { [Ensure]::Absent }
+		$this.PhysicalPath = $c.PhysicalPath
+		return $this
 	}
 
 	<#
@@ -98,7 +103,7 @@ class COGITO_xIISSharedConfig
 				$c = $this.GetIISSharedConfig()
 				$cEnabled = $c.Enabled
 				$cPhysicalPath = $c.PhysicalPath -eq $this.PhysicalPath
-				$cUserName = $c.UserName -eq $this.User.UserName
+				$cUserName = $c.UserName -eq $this.UserCredential.UserName
 
 				# check whether any properties are different from current state
 				if (!$cEnabled -or !$cPhysicalPath -or !$cUserName) {
@@ -111,20 +116,17 @@ class COGITO_xIISSharedConfig
 						}
 					}
 
-					$c = $this.EnableIISSharedConfig($this.PhysicalPath, $this.User, $this.KeyEncryptionPassword, $this.DontCopyRemoteKeys)
+					$c = $this.EnableIISSharedConfig($this.PhysicalPath, $this.UserCredential, $this.KeyEncryptionPassword, $this.DontCopyRemoteKeys)
 					if (!$c.Enabled) {
 						New-InvalidOperationException -Message "Could not enable IIS Shared Configuration."
 					}
 				}
-				
-				# check if enabled now
 			}
 
 			[Ensure]::Absent {
 				$c = $this.GetIISSharedConfig()
 				if ($c.Enabled) {
-					Write-Verbose 'Disabling IIS Shared Configuration...'
-						$c = $this.DisableIISSharedConfig()
+					$c = $this.DisableIISSharedConfig()
 					if ($c.Enabled) {
 						New-InvalidOperationException -Message "Could not disable IIS Shared Configuration."
 					}
@@ -146,7 +148,7 @@ class COGITO_xIISSharedConfig
 				$c = $this.GetIISSharedConfig()
 				$cEnabled = $c.Enabled
 				$cPhysicalPath = $c.PhysicalPath -eq $this.PhysicalPath
-				$cUserName = $c.UserName -eq $this.User.UserName
+				$cUserName = $c.UserName -eq $this.UserCredential.UserName
 
 				# check whether any properties are different from current state
 				if (!$cEnabled -or !$cPhysicalPath -or !$cUserName) {
@@ -155,7 +157,7 @@ class COGITO_xIISSharedConfig
 			}
 
 			[Ensure]::Absent {
-				$c = Get-IISSharedConfig
+				$c = $this.GetIISSharedConfig()
 				return !$c.Enabled
 			}
 		}
