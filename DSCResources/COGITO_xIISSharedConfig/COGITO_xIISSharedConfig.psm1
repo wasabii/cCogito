@@ -5,7 +5,7 @@ enum Ensure
 }
 
 [DscResource()]
-class COGITO_cIISSharedConfiguration
+class COGITO_xIISSharedConfig
 {
 
 	[DscProperty(Key)]
@@ -46,7 +46,7 @@ class COGITO_cIISSharedConfiguration
         The implementation should use the keys to find appropriate resources.
         This method returns an instance of this class with the updated key properties.
     #>
-	[COGITO_cIISSharedConfiguration] Get()
+	[COGITO_xIISSharedConfig] Get()
 	{
 		$c = $this.GetIISSharedConfig();
 
