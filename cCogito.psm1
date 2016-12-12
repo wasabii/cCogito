@@ -5,6 +5,140 @@ enum Ensure
 }
 
 [DscResource()]
+class cWaitForFile
+{
+
+	[DscProperty(Key)]
+	[string]$Path
+
+	[DscProperty(Mandatory)]
+	[Ensure]$Ensure = [Ensure]::Present
+
+	[DscProperty()]
+	[int]$RetryCount = 5
+
+	[DscProperty()]
+	[int]$RetryIntervalSec = 60
+	
+	[cWaitForFile] Get()
+	{
+		$this.Ensure = $this.Test()
+		return $this
+	}
+
+	[void] Set()
+	{
+		switch ($this.Ensure)
+		{
+			[Ensure]::Present {
+				for ($i = 0; $i -lt $this.RetryCount; $i++)
+				{
+					if (!(Test-Path $this.Path)) {
+						Write-Verbose "$this.Path not found, waiting..."
+						Start-Sleep -Seconds $this.RetryIntervalSec
+					}
+				}
+
+				if (!(Test-Path $this.Path)) {
+					New-InvalidOperationException -Message "$this.Path not found. Permanent failure."
+				}
+			}
+
+			[Ensure]::Absent {
+				for ($i = 0; $i -lt $this.RetryCount; $i++)
+				{
+					if (Test-Path $this.Path) {
+						Write-Verbose "$this.Path found, waiting..."
+						Start-Sleep -Seconds $this.RetryIntervalSec
+					}
+				}
+
+				if (Test-Path $this.Path) {
+					New-InvalidOperationException -Message "$this.Path found. Permanent failure."
+				}
+			}
+		}
+	}
+	
+	[bool] Test()
+	{
+		switch ($this.Ensure)
+		{
+			[Ensure]::Present {
+				return Test-Path $this.Path
+			}
+
+			[Ensure]::Absent {
+				return !Test-Path $this.Path
+			}
+		}
+
+		return $false
+	}
+
+}
+
+[DscResource()]
+class cChangeDriveLetter
+{
+
+	[DscProperty(Key)]
+	[string]$DriveLetter
+
+	[DscProperty(Mandatory)]
+	[string]$TargetDriveLetter
+
+	[DscProperty()]
+	[string]$DriveType = 'CD-ROM'
+	
+	[cChangeDriveLetter] Get()
+	{
+		return $this
+	}
+
+	[void] Set()
+	{
+		$a = Get-Volume -DriveLetter $this.DriveLetter
+		$b = Get-Volume -DriveLetter $this.TargetDriveLetter
+		
+		# source exists, target does not exist
+		if ($a -and !$b) {
+
+			# drive type specified, validate
+			if ($this.DriveType -and $a.DriveType -ne $this.DriveType) {
+				return
+			}
+
+			# reassign drive letter
+			$d = Get-WmiObject -Class Win32_Volume -Filter "DriveLetter = '$($this.DriveLetter):'"
+			if ($d) {
+				Set-WmiInstance -InputObject $d -Arguments @{ DriveLetter = "$($this.TargetDriveLetter):" }
+			}
+		}
+	}
+	
+	[bool] Test()
+	{
+		$a = Get-Volume -DriveLetter $this.DriveLetter
+		$b = Get-Volume -DriveLetter $this.TargetDriveLetter
+
+		if ($a -and !$b) {
+
+			# no work if drive does not match type
+			if ($this.DriveType -and $a.DriveType -ne $this.DriveType) {
+				return $true
+			}
+
+			# work to be done
+			return $false
+		}
+
+		return $true
+	}
+
+}
+
+[DscResource()]
 class cIISSharedConfig
 {
 
@@ -21,7 +155,7 @@ class cIISSharedConfig
 	[PSCredential]$UserCredential
 	
 	[DscProperty(Mandatory)]
-	[SecureString]$KeyEncryptionPassword
+	[string]$KeyEncryptionPassword
 
 	[DscProperty()]
 	[bool]$DontCopyRemoteKeys = $false
@@ -46,7 +180,7 @@ class cIISSharedConfig
 	[Hashtable] EnableIISSharedConfig(
 		[string]$PhysicalPath, 
 		[PSCredential]$UserCredential, 
-		[SecureString]$KeyEncryptionPassword, 
+		[string]$KeyEncryptionPassword, 
 		[bool]$DontCopyRemoteKeys)
 	{
 		$c = $this.GetIISSharedConfig()
@@ -56,7 +190,7 @@ class cIISSharedConfig
 				-PhysicalPath $PhysicalPath `
 				-UserName $UserCredential.UserName `
 				-Password (ConvertTo-SecureString -AsPlainText -Force $UserCredential.GetNetworkCredential().Password) `
-				-KeyEncryptionPassword $KeyEncryptionPassword
+				-KeyEncryptionPassword (ConvertTo-SecureString -AsPlainText -Force $KeyEncryptionPassword)
 			$c = $this.GetIISSharedConfig()
 		}
 
@@ -78,11 +212,6 @@ class cIISSharedConfig
 		return $c
 	}
 	
-    <#
-        This method is equivalent of the Get-TargetResource script function.
-        The implementation should use the keys to find appropriate resources.
-        This method returns an instance of this class with the updated key properties.
-    #>
 	[cIISSharedConfig] Get()
 	{
 		$c = $this.GetIISSharedConfig();
@@ -90,11 +219,7 @@ class cIISSharedConfig
 		$this.PhysicalPath = $c.PhysicalPath
 		return $this
 	}
-
-	<#
-        This method is equivalent of the Set-TargetResource script function.
-        It sets the resource to the desired state.
-    #>
+	
 	[void] Set()
 	{
 		switch ($this.Ensure)
@@ -134,12 +259,7 @@ class cIISSharedConfig
 			}
 		}
 	}
-	 
-	<#
-        This method is equivalent of the Test-TargetResource script function.
-        It should return True or False, showing whether the resource
-        is in a desired state.
-    #>
+	
 	[bool] Test()
 	{
 		switch ($this.Ensure)
