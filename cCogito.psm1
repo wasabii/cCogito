@@ -12,7 +12,7 @@ class cWaitForFile
 	[string]$Path
 
 	[DscProperty(Mandatory)]
-	[Ensure]$Ensure = [Ensure]::Present
+	[Ensure]$Ensure
 
 	[DscProperty()]
 	[int]$RetryCount = 5
@@ -22,55 +22,61 @@ class cWaitForFile
 	
 	[cWaitForFile] Get()
 	{
-		$this.Ensure = $this.Test()
+		$this.Ensure = if ($this.Test()) { [Ensure]::Present } else { [Ensure]::Absent }
 		return $this
 	}
 
 	[void] Set()
 	{
-		switch ($this.Ensure)
-		{
-			[Ensure]::Present {
-				for ($i = 0; $i -lt $this.RetryCount; $i++)
-				{
-					if (!(Test-Path $this.Path)) {
-						Write-Verbose "$this.Path not found, waiting..."
-						Start-Sleep -Seconds $this.RetryIntervalSec
-					}
-				}
+		if ($this.Ensure -eq [Ensure]::Present)
+        {
+			for ($i = 0; $i -lt $this.RetryCount; $i++)
+			{
+                Write-Progress -Activity "Waiting for $($this.Path) to be present..." `
+                    -PercentComplete ((100 / $this.RetryCount) * $i) `
+                    -CurrentOperation "$($i + 1) / $($this.RetryCount)" `
+                    -Status "Attempt"
 
 				if (!(Test-Path $this.Path)) {
-					New-InvalidOperationException -Message "$this.Path not found. Permanent failure."
+					Start-Sleep -Seconds $this.RetryIntervalSec
 				}
 			}
 
-			[Ensure]::Absent {
-				for ($i = 0; $i -lt $this.RetryCount; $i++)
-				{
-					if (Test-Path $this.Path) {
-						Write-Verbose "$this.Path found, waiting..."
-						Start-Sleep -Seconds $this.RetryIntervalSec
-					}
-				}
+			if (!(Test-Path $this.Path)) {
+				throw "$($this.Path) not found."
+			}
+		}
+
+		if ($this.Ensure -eq [Ensure]::Absent)
+        {
+			for ($i = 0; $i -lt $this.RetryCount; $i++)
+			{
+                Write-Progress -Activity "Waiting for $($this.Path) to be absent..." `
+                    -PercentComplete ((100 / $this.RetryCount) * $i) `
+                    -CurrentOperation "$($i + 1) / $($this.RetryCount)" `
+                    -Status "Attempt"
 
 				if (Test-Path $this.Path) {
-					New-InvalidOperationException -Message "$this.Path found. Permanent failure."
+					Start-Sleep -Seconds $this.RetryIntervalSec
 				}
+			}
+
+			if (Test-Path $this.Path) {
+				throw "$($this.Path) found."
 			}
 		}
 	}
 	
 	[bool] Test()
-	{
-		switch ($this.Ensure)
-		{
-			[Ensure]::Present {
-				return Test-Path $this.Path
-			}
+    {
+		if ($this.Ensure -eq [Ensure]::Present)
+        {
+			return Test-Path $this.Path
+		}
 
-			[Ensure]::Absent {
-				return !Test-Path $this.Path
-			}
+		if ($this.Ensure -eq [Ensure]::Absent)
+        {
+			return !(Test-Path $this.Path)
 		}
 
 		return $false
@@ -146,7 +152,7 @@ class cIISSharedConfig
 	[string]$Name
 
 	[DscProperty(Mandatory)]
-	[Ensure]$Ensure = [Ensure]::Present
+	[Ensure]$Ensure
 	
 	[DscProperty(Mandatory)]
 	[string]$PhysicalPath
@@ -165,7 +171,7 @@ class cIISSharedConfig
 	#>
 	[Hashtable] GetIISSharedConfig()
 	{
-		$c = ConvertFrom-StringData (Get-IISSharedConfig).Replace('\', '\\')
+		$c = ConvertFrom-StringData ((Get-IISSharedConfig) -join '`n').Replace('\', '\\')
 		
 		return @{
 			Enabled = $c['Enabled'] -eq 'True'
@@ -183,6 +189,18 @@ class cIISSharedConfig
 		[string]$KeyEncryptionPassword, 
 		[bool]$DontCopyRemoteKeys)
 	{
+        if (!($PhysicalPath)) {
+            throw 'PhysicalPath required.';
+        }
+
+        if (!($UserCredential)) {
+            throw 'UserCredential required.';
+        }
+
+        if (!($KeyEncryptionPassword)) {
+            throw 'KeyEncryptionPassword required.';
+        }
+
 		$c = $this.GetIISSharedConfig()
 		if ($c) {
 			Write-Verbose 'Enabling IIS Shared Configuration...'
@@ -222,39 +240,38 @@ class cIISSharedConfig
 	
 	[void] Set()
 	{
-		switch ($this.Ensure)
+		if ($this.Ensure -eq [Ensure]::Present)
 		{
-			[Ensure]::Present {
-				$c = $this.GetIISSharedConfig()
-				$cEnabled = $c.Enabled
-				$cPhysicalPath = $c.PhysicalPath -eq $this.PhysicalPath
-				$cUserName = $c.UserName -eq $this.UserCredential.UserName
+			$c = $this.GetIISSharedConfig()
+			$cEnabled = $c.Enabled
+			$cPhysicalPath = $c.PhysicalPath -eq $this.PhysicalPath
+			$cUserName = $c.UserName -eq $this.UserCredential.UserName
 
-				# check whether any properties are different from current state
-				if (!$cEnabled -or !$cPhysicalPath -or !$cUserName) {
+			# check whether any properties are different from current state
+			if (!$cEnabled -or !$cPhysicalPath -or !$cUserName) {
 
-					# already enabled, disable first
-					if ($cEnabled) {
-						$c = $this.DisableIISSharedConfig()
-						if ($c.Enabled) {
-							New-InvalidOperationException -Message "Could not disable IIS Shared Configuration."
-						}
-					}
-
-					$c = $this.EnableIISSharedConfig($this.PhysicalPath, $this.UserCredential, $this.KeyEncryptionPassword, $this.DontCopyRemoteKeys)
-					if (!$c.Enabled) {
-						New-InvalidOperationException -Message "Could not enable IIS Shared Configuration."
-					}
-				}
-			}
-
-			[Ensure]::Absent {
-				$c = $this.GetIISSharedConfig()
-				if ($c.Enabled) {
+				# already enabled, disable first
+				if ($cEnabled) {
 					$c = $this.DisableIISSharedConfig()
 					if ($c.Enabled) {
-						New-InvalidOperationException -Message "Could not disable IIS Shared Configuration."
+						throw "Could not disable IIS Shared Configuration."
 					}
+				}
+
+				$c = $this.EnableIISSharedConfig($this.PhysicalPath, $this.UserCredential, $this.KeyEncryptionPassword, $this.DontCopyRemoteKeys)
+				if (!$c.Enabled) {
+					throw "Could not enable IIS Shared Configuration."
+				}
+			}
+		}
+
+		if ($this.Ensure -eq [Ensure]::Absent)
+		{
+			$c = $this.GetIISSharedConfig()
+			if ($c.Enabled) {
+				$c = $this.DisableIISSharedConfig()
+				if ($c.Enabled) {
+					throw "Could not disable IIS Shared Configuration."
 				}
 			}
 		}
@@ -262,27 +279,31 @@ class cIISSharedConfig
 	
 	[bool] Test()
 	{
-		switch ($this.Ensure)
+		if ($this.Ensure -eq [Ensure]::Present)
 		{
-			[Ensure]::Present {
-				$c = $this.GetIISSharedConfig()
-				$cEnabled = $c.Enabled
-				$cPhysicalPath = $c.PhysicalPath -eq $this.PhysicalPath
-				$cUserName = $c.UserName -eq $this.UserCredential.UserName
+			$c = $this.GetIISSharedConfig()
+			$cEnabled = $c.Enabled
+			$cPhysicalPath = $c.PhysicalPath -eq $this.PhysicalPath
+			$cUserName = $c.UserName -eq $this.UserCredential.UserName
 
-				# check whether any properties are different from current state
-				if (!$cEnabled -or !$cPhysicalPath -or !$cUserName) {
-					return $false;
-				}
+			# check whether any properties are different from current state
+			if (!$cEnabled -or !$cPhysicalPath -or !$cUserName) {
+				return $false;
 			}
+		}
 
-			[Ensure]::Absent {
-				$c = $this.GetIISSharedConfig()
-				return !$c.Enabled
-			}
+		if ($this.Ensure -eq [Ensure]::Absent)
+		{
+			$c = $this.GetIISSharedConfig()
+			return !$c.Enabled
 		}
 
 		return $false
 	}
 
+}
+
+function New-cIISSharedConfig()
+{
+	return [cIISSharedConfig]::new()
 }
