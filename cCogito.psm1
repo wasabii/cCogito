@@ -84,6 +84,11 @@ class cWaitForFile
 
 }
 
+function New-cWaitForFile()
+{
+	return [cWaitForFile]::new()
+}
+
 [DscResource()]
 class cChangeDriveLetter
 {
@@ -128,8 +133,8 @@ class cChangeDriveLetter
 		$a = Get-Volume -DriveLetter $this.DriveLetter
 		$b = Get-Volume -DriveLetter $this.TargetDriveLetter
 
-		if ($a -and !$b) {
-
+		if ($a -and !$b)
+		{
 			# no work if drive does not match type
 			if ($this.DriveType -and $a.DriveType -ne $this.DriveType) {
 				return $true
@@ -142,6 +147,11 @@ class cChangeDriveLetter
 		return $true
 	}
 
+}
+
+function New-cChangeDriveLetter()
+{
+	return [cChangeDriveLetter]::new()
 }
 
 [DscResource()]
@@ -161,7 +171,7 @@ class cIISSharedConfig
 	[PSCredential]$UserCredential
 	
 	[DscProperty(Mandatory)]
-	[string]$KeyEncryptionPassword
+	[PSCredential]$KeyEncryptionPassword
 
 	[DscProperty()]
 	[bool]$DontCopyRemoteKeys = $false
@@ -171,7 +181,7 @@ class cIISSharedConfig
 	#>
 	[Hashtable] GetIISSharedConfig()
 	{
-		$c = ConvertFrom-StringData ((Get-IISSharedConfig) -join '`n').Replace('\', '\\')
+		$c = ConvertFrom-StringData ((Get-IISSharedConfig) -join "`r`n").Replace('\', '\\')
 		
 		return @{
 			Enabled = $c['Enabled'] -eq 'True'
@@ -186,7 +196,7 @@ class cIISSharedConfig
 	[Hashtable] EnableIISSharedConfig(
 		[string]$PhysicalPath, 
 		[PSCredential]$UserCredential, 
-		[string]$KeyEncryptionPassword, 
+		[SecureString]$KeyEncryptionPassword, 
 		[bool]$DontCopyRemoteKeys)
 	{
         if (!($PhysicalPath)) {
@@ -208,7 +218,8 @@ class cIISSharedConfig
 				-PhysicalPath $PhysicalPath `
 				-UserName $UserCredential.UserName `
 				-Password (ConvertTo-SecureString -AsPlainText -Force $UserCredential.GetNetworkCredential().Password) `
-				-KeyEncryptionPassword (ConvertTo-SecureString -AsPlainText -Force $KeyEncryptionPassword)
+				-KeyEncryptionPassword $KeyEncryptionPassword `
+				-Force
 			$c = $this.GetIISSharedConfig()
 		}
 
@@ -248,17 +259,13 @@ class cIISSharedConfig
 			$cUserName = $c.UserName -eq $this.UserCredential.UserName
 
 			# check whether any properties are different from current state
-			if (!$cEnabled -or !$cPhysicalPath -or !$cUserName) {
-
-				# already enabled, disable first
-				if ($cEnabled) {
-					$c = $this.DisableIISSharedConfig()
-					if ($c.Enabled) {
-						throw "Could not disable IIS Shared Configuration."
-					}
-				}
-
-				$c = $this.EnableIISSharedConfig($this.PhysicalPath, $this.UserCredential, $this.KeyEncryptionPassword, $this.DontCopyRemoteKeys)
+			if (!$cEnabled -or !$cPhysicalPath -or !$cUserName)
+			{
+				$c = $this.EnableIISSharedConfig(
+					$this.PhysicalPath, 
+					$this.UserCredential, 
+					(ConvertTo-SecureString -AsPlainText -Force $this.KeyEncryptionPassword.GetNetworkCredential().Password),
+					$this.DontCopyRemoteKeys)
 				if (!$c.Enabled) {
 					throw "Could not enable IIS Shared Configuration."
 				}
@@ -279,26 +286,35 @@ class cIISSharedConfig
 	
 	[bool] Test()
 	{
+		$c = $this.GetIISSharedConfig()
+
 		if ($this.Ensure -eq [Ensure]::Present)
 		{
-			$c = $this.GetIISSharedConfig()
-			$cEnabled = $c.Enabled
-			$cPhysicalPath = $c.PhysicalPath -eq $this.PhysicalPath
-			$cUserName = $c.UserName -eq $this.UserCredential.UserName
+			if ($c.Enabled -ne $true) {
+				Write-Verbose "Enabled != True"
+				return $false
+			}
 
-			# check whether any properties are different from current state
-			if (!$cEnabled -or !$cPhysicalPath -or !$cUserName) {
+			if ($c.PhysicalPath -ne $this.PhysicalPath) {
+				Write-Verbose "PhysicalPath != $($this.PhysicalPath)"
+				return $false
+			}
+
+			if ($c.UserName -ne $this.UserCredential.UserName) {
+				Write-Verbose "UserName != $($this.UserCredential.UserName)"
 				return $false;
 			}
 		}
 
 		if ($this.Ensure -eq [Ensure]::Absent)
 		{
-			$c = $this.GetIISSharedConfig()
-			return !$c.Enabled
+			if ($c.Enabled -ne $false) {
+				Write-Verbose "Enabled != False"
+				return $false;
+			}
 		}
 
-		return $false
+		return $true
 	}
 
 }
@@ -306,4 +322,79 @@ class cIISSharedConfig
 function New-cIISSharedConfig()
 {
 	return [cIISSharedConfig]::new()
+}
+
+[DscResource()]
+class cDfsrMember
+{
+
+    [DscProperty(Mandatory)]
+    [Ensure]$Ensure
+
+    [DscProperty(Key)]
+    [string]$GroupName
+
+    [DscProperty(Mandatory)]
+    [string]$InvokeOnComputerName
+
+    [DscProperty()]
+    [PSCredential]$Credential
+
+	<#
+		Executes the command on the remote management computer.
+	#>
+    [object] Invoke($ScriptBlock)
+    {
+        return Invoke-Command -ComputerName $this.InvokeOnComputerName -Credential $this.Credential -ScriptBlock $ScriptBlock
+    }
+
+	<#
+		Gets the DFSR member object.
+	#>
+    [object] GetDfsrMember()
+    {
+        $c = $env:COMPUTERNAME
+        $d = (Get-ADDomain).DNSRoot
+        return $this.Invoke({ Get-DfsrMember -DomainName $d -GroupName $this.GroupName -ComputerName $c })
+    }
+
+    [cDfsrMember] Get()
+    {
+        $m = $this.GetDfsrMember()
+        $this.Ensure = if ($m) { [Ensure]::Present } else { [Ensure]::Absent }
+        return $this
+    }
+
+    [bool] Test()
+    {
+        $m = $this.GetDfsrMember()
+        if ($m) {
+            return $true
+        } else {
+            return $false
+        }
+    }
+
+    [void] Set()
+    {
+        if (!$this.Test()) {
+            $c = $env:COMPUTERNAME
+            $d = (Get-ADDomain).DNSRoot
+
+            $this.Invoke({
+                $m = Get-DfsrMember -DomainName $d -GroupName $this.GroupName -ComputerName $c
+                if (!$m) {
+                    Add-DfsrMember -DomainName $d -GroupName $this.GroupName -ComputerName $c
+                } else {
+                    
+                }
+            })
+        }
+    }
+
+}
+
+function New-cDfsrMember()
+{
+	return [cDfsrMember]::new()
 }
