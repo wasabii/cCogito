@@ -167,17 +167,17 @@ class cIISSharedConfig
 	[DscProperty(Mandatory)]
 	[string]$PhysicalPath
 	
-	[DscProperty(Mandatory)]
+	[DscProperty()]
 	[PSCredential]$UserCredential
 	
 	[DscProperty(Mandatory)]
-	[PSCredential]$KeyEncryptionPassword
+	[string]$KeyEncryptionPassword
 
 	[DscProperty()]
 	[bool]$DontCopyRemoteKeys = $false
 
 	<#
-		This method returns a hashtable with the current IIS shared configuration information, parsed.
+		This method returns a hashtable with the current IIS shared configuration information.
 	#>
 	[Hashtable] GetIISSharedConfig()
 	{
@@ -203,10 +203,6 @@ class cIISSharedConfig
             throw 'PhysicalPath required.';
         }
 
-        if (!($UserCredential)) {
-            throw 'UserCredential required.';
-        }
-
         if (!($KeyEncryptionPassword)) {
             throw 'KeyEncryptionPassword required.';
         }
@@ -214,12 +210,19 @@ class cIISSharedConfig
 		$c = $this.GetIISSharedConfig()
 		if ($c) {
 			Write-Verbose 'Enabling IIS Shared Configuration...'
-			Enable-IISSharedConfig `
-				-PhysicalPath $PhysicalPath `
-				-UserName $UserCredential.UserName `
-				-Password (ConvertTo-SecureString -AsPlainText -Force $UserCredential.GetNetworkCredential().Password) `
-				-KeyEncryptionPassword $KeyEncryptionPassword `
-				-Force
+            if ($UserCredential) {
+			    Enable-IISSharedConfig `
+				    -PhysicalPath $PhysicalPath `
+				    -UserName $UserCredential.UserName `
+				    -Password (ConvertTo-SecureString -AsPlainText -Force $UserCredential.GetNetworkCredential().Password) `
+				    -KeyEncryptionPassword $KeyEncryptionPassword `
+				    -Force
+            } else {
+                Enable-IISSharedConfig `
+				    -PhysicalPath $PhysicalPath `
+				    -KeyEncryptionPassword $KeyEncryptionPassword `
+				    -Force
+            }
 			$c = $this.GetIISSharedConfig()
 		}
 
@@ -256,15 +259,15 @@ class cIISSharedConfig
 			$c = $this.GetIISSharedConfig()
 			$cEnabled = $c.Enabled
 			$cPhysicalPath = $c.PhysicalPath -eq $this.PhysicalPath
-			$cUserName = $c.UserName -eq $this.UserCredential.UserName
+			$cUserName = if ($this.UserCredential) { $c.UserName -eq $this.UserCredential.UserName } else { [string]::IsNullOrEmpty($c.UserName) }
 
 			# check whether any properties are different from current state
 			if (!$cEnabled -or !$cPhysicalPath -or !$cUserName)
 			{
 				$c = $this.EnableIISSharedConfig(
-					$this.PhysicalPath, 
-					$this.UserCredential, 
-					(ConvertTo-SecureString -AsPlainText -Force $this.KeyEncryptionPassword.GetNetworkCredential().Password),
+					$this.PhysicalPath,
+					$this.UserCredential,
+					(ConvertTo-SecureString -AsPlainText -Force $this.KeyEncryptionPassword),
 					$this.DontCopyRemoteKeys)
 				if (!$c.Enabled) {
 					throw "Could not enable IIS Shared Configuration."
@@ -300,10 +303,12 @@ class cIISSharedConfig
 				return $false
 			}
 
-			if ($c.UserName -ne $this.UserCredential.UserName) {
-				Write-Verbose "UserName != $($this.UserCredential.UserName)"
-				return $false;
-			}
+            if ($this.UserCredential) {
+			    if ($c.UserName -ne $this.UserCredential.UserName) {
+				    Write-Verbose "UserName != $($this.UserCredential.UserName)"
+				    return $false;
+			    }
+            }
 		}
 
 		if ($this.Ensure -eq [Ensure]::Absent)
@@ -322,79 +327,4 @@ class cIISSharedConfig
 function New-cIISSharedConfig()
 {
 	return [cIISSharedConfig]::new()
-}
-
-[DscResource()]
-class cDfsrMember
-{
-
-    [DscProperty(Mandatory)]
-    [Ensure]$Ensure
-
-    [DscProperty(Key)]
-    [string]$GroupName
-
-    [DscProperty(Mandatory)]
-    [string]$InvokeOnComputerName
-
-    [DscProperty()]
-    [PSCredential]$Credential
-
-	<#
-		Executes the command on the remote management computer.
-	#>
-    [object] Invoke($ScriptBlock)
-    {
-        return Invoke-Command -ComputerName $this.InvokeOnComputerName -Credential $this.Credential -ScriptBlock $ScriptBlock
-    }
-
-	<#
-		Gets the DFSR member object.
-	#>
-    [object] GetDfsrMember()
-    {
-        $c = $env:COMPUTERNAME
-        $d = (Get-ADDomain).DNSRoot
-        return $this.Invoke({ Get-DfsrMember -DomainName $d -GroupName $this.GroupName -ComputerName $c })
-    }
-
-    [cDfsrMember] Get()
-    {
-        $m = $this.GetDfsrMember()
-        $this.Ensure = if ($m) { [Ensure]::Present } else { [Ensure]::Absent }
-        return $this
-    }
-
-    [bool] Test()
-    {
-        $m = $this.GetDfsrMember()
-        if ($m) {
-            return $true
-        } else {
-            return $false
-        }
-    }
-
-    [void] Set()
-    {
-        if (!$this.Test()) {
-            $c = $env:COMPUTERNAME
-            $d = (Get-ADDomain).DNSRoot
-
-            $this.Invoke({
-                $m = Get-DfsrMember -DomainName $d -GroupName $this.GroupName -ComputerName $c
-                if (!$m) {
-                    Add-DfsrMember -DomainName $d -GroupName $this.GroupName -ComputerName $c
-                } else {
-                    
-                }
-            })
-        }
-    }
-
-}
-
-function New-cDfsrMember()
-{
-	return [cDfsrMember]::new()
 }
