@@ -12,7 +12,7 @@
 RootModule = 'cCogito.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.37'
+ModuleVersion = '1.0.38'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -27,7 +27,7 @@ Author = 'Jerome Haltom'
 CompanyName = 'Cogito'
 
 # Copyright statement for this module
-Copyright = '(c) 2016 Jerome Haltom'
+Copyright = '(c) 2017 Jerome Haltom'
 
 # Description of the functionality provided by this module
 Description = 'Various DSC utilities.'

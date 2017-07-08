@@ -109,8 +109,8 @@ class cChangeDriveLetter
 
 	[void] Set()
 	{
-		$a = Get-Volume -DriveLetter $this.DriveLetter
-		$b = Get-Volume -DriveLetter $this.TargetDriveLetter
+		$a = Get-Volume -DriveLetter $this.DriveLetter -ErrorAction SilentlyContinue
+		$b = Get-Volume -DriveLetter $this.TargetDriveLetter -ErrorAction SilentlyContinue
 		
 		# source exists, target does not exist
 		if ($a -and !$b) {
@@ -130,8 +130,8 @@ class cChangeDriveLetter
 	
 	[bool] Test()
 	{
-		$a = Get-Volume -DriveLetter $this.DriveLetter
-		$b = Get-Volume -DriveLetter $this.TargetDriveLetter
+		$a = Get-Volume -DriveLetter $this.DriveLetter -ErrorAction SilentlyContinue
+		$b = Get-Volume -DriveLetter $this.TargetDriveLetter -ErrorAction SilentlyContinue
 
 		if ($a -and !$b)
 		{
