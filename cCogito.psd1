@@ -12,7 +12,7 @@
 RootModule = 'cCogito.psm1'
 
 # Version number of this module.
-ModuleVersion = '$version$'
+ModuleVersion = '#{GITVERSION_NUGETVERSION}#'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
