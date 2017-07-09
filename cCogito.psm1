@@ -170,47 +170,23 @@ function Get-IISSharedConfigPolyfill()
     }
 }
 
-Write-Host "Loading polyfill for Enable-IISSharedConfig"
 function Enable-IISSharedConfigPolyfill
 {
     param(
 
-
-        [Parameter(Position=0, ValueFromPipeline=$false, ValueFromPipelineByPropertyName=$true, Mandatory=$true)]
-
-        [ValidateNotNullOrEmpty]
         [string]$PhysicalPath,
-
-
-        [Parameter(Position=1, ValueFromPipeline=$false, ValueFromPipelineByPropertyName=$true, Mandatory=$false)]
-
-        [ValidateNotNull]
         [string]$UserName,
-
-
-        [Parameter(Position=2, ValueFromPipeline=$false, ValueFromPipelineByPropertyName=$true, Mandatory=$false)]
-
-        [ValidateNotNull]
         [SecureString]$Password,
-
-
-        [Parameter(Position=3, ValueFromPipeline=$false, ValueFromPipelineByPropertyName=$true, Mandatory=$false)]
-        [ValidateNotNullOrEmpty]
         [SecureString]$KeyEncryptionPassword,
-
-        [Parameter]
-        [switch]$DontCopyRemoteKeys
-,
-
-        [Parameter]
-        [switch]$Force
+        [switch]$DontCopyRemoteKeys = $false,
+        [switch]$Force = $false
     )
 
     if (!(Get-Command 'Enable-IISSharedConfig' -ErrorAction SilentlyContinue)) {
 	Write-Host "Executing polyfill for Enable-IISSharedConfig"
 
         $s = @()
-        $c = New-Object Microsoft.IIS.Powershell.Commands.GetIISSharedConfigCommand
+        $c = New-Object Microsoft.IIS.Powershell.Commands.EnableIISSharedConfigCommand
         $c.PhysicalPath = $PhysicalPath
         $c.UserName = $UserName
         $c.Password = $Password
