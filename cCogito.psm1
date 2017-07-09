@@ -154,6 +154,90 @@ function New-cChangeDriveLetter()
     return [cChangeDriveLetter]::new()
 }
 
+if (!(Get-Command 'Get-IISSharedConfig' -ErrorAction SilentlyContinue)) {
+    Write-Host "Loading polyfill for Get-IISSharedConfig"
+    function Get-IISSharedConfig()
+    {
+	Write-Host "Polyfill for Get-IISSharedConfig"
+
+        $s = @()
+        $c = New-Object Microsoft.IIS.Powershell.Commands.GetIISSharedConfigCommand
+        foreach ($p in $c.Invoke()) {
+            $s += $p
+        }
+        return $s
+    }
+}
+
+if (!(Get-Command 'Enable-IISSharedConfig' -ErrorAction SilentlyContinue)) {
+    Write-Host "Loading polyfill for Enable-IISSharedConfig"
+    function Enable-IISSharedConfig
+    {
+        param(
+
+
+            [Parameter(Position=0, ValueFromPipeline=$false, ValueFromPipelineByPropertyName=$true, Mandatory=$true)]
+
+            [ValidateNotNullOrEmpty]
+            [string]$PhysicalPath,
+
+
+            [Parameter(Position=1, ValueFromPipeline=$false, ValueFromPipelineByPropertyName=$true, Mandatory=$false)]
+
+            [ValidateNotNull]
+            [string]$UserName,
+
+    
+        [Parameter(Position=2, ValueFromPipeline=$false, ValueFromPipelineByPropertyName=$true, Mandatory=$false)]
+
+            [ValidateNotNull]
+            [SecureString]$Password,
+
+
+            [Parameter(Position=3, ValueFromPipeline=$false, ValueFromPipelineByPropertyName=$true, Mandatory=$false)]
+            [ValidateNotNullOrEmpty]
+            [SecureString]$KeyEncryptionPassword,
+
+            [Parameter]
+            [switch]$DontCopyRemoteKeys
+,
+
+            [Parameter]
+            [switch]$Force
+        )
+
+	Write-Host "Polyfill for Enable-IISSharedConfig"
+
+        $s = @()
+        $c = New-Object Microsoft.IIS.Powershell.Commands.GetIISSharedConfigCommand
+        $c.PhysicalPath = $PhysicalPath
+        $c.UserName = $UserName
+        $c.Password = $Password
+        $c.KeyEncryptionPassword = $KeyEncryptionPassword
+        $c.DontCopyRemoteKeys = $DontCopyRemoteKeys
+        $c.Force = $Force
+        foreach ($p in $c.Invoke()) {
+            $s += $p
+        }
+        return $s
+    }
+}
+
+if (!(Get-Command 'Disable-IISSharedConfig' -ErrorAction SilentlyContinue)) {
+    Write-Host "Loading polyfill for Disable-IISSharedConfig"
+    function Disable-IISSharedConfig()
+    {
+	Write-Host "Polyfill for Disable-IISSharedConfig"
+
+        $s = @()
+        $c = New-Object Microsoft.IIS.Powershell.Commands.DisableIISSharedConfigCommand
+        foreach ($p in $c.Invoke()) {
+            $s += $p
+        }
+        return $s
+    }
+}
+
 [DscResource()]
 class cIISSharedConfig
 {
