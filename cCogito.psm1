@@ -157,7 +157,7 @@ function New-cChangeDriveLetter()
 function Get-IISSharedConfigPolyfill()
 {
     if (!(Get-Command 'Get-IISSharedConfig' -ErrorAction SilentlyContinue)) {
-	Write-Host "Executing polyfill for Get-IISSharedConfig"
+        Write-Host "Executing polyfill for Get-IISSharedConfig"
 
         $s = @()
         $c = New-Object Microsoft.IIS.Powershell.Commands.GetIISSharedConfigCommand
@@ -183,7 +183,7 @@ function Enable-IISSharedConfigPolyfill
     )
 
     if (!(Get-Command 'Enable-IISSharedConfig' -ErrorAction SilentlyContinue)) {
-	Write-Host "Executing polyfill for Enable-IISSharedConfig"
+        Write-Host "Executing polyfill for Enable-IISSharedConfig"
 
         $s = @()
         $c = New-Object Microsoft.IIS.Powershell.Commands.EnableIISSharedConfigCommand
@@ -211,7 +211,7 @@ function Enable-IISSharedConfigPolyfill
 function Disable-IISSharedConfigPolyfill()
 {
     if (!(Get-Command 'Disable-IISSharedConfig' -ErrorAction SilentlyContinue)) {
-	Write-Host "Executing polyfill for Disable-IISSharedConfig"
+        Write-Host "Executing polyfill for Disable-IISSharedConfig"
 
         $s = @()
         $c = New-Object Microsoft.IIS.Powershell.Commands.DisableIISSharedConfigCommand
