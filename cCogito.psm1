@@ -154,6 +154,76 @@ function New-cChangeDriveLetter()
     return [cChangeDriveLetter]::new()
 }
 
+function Get-IISSharedConfigPolyfill()
+{
+    if (!(Get-Command 'Get-IISSharedConfig' -ErrorAction SilentlyContinue)) {
+        Write-Host "Executing polyfill for Get-IISSharedConfig"
+
+        $s = @()
+        $c = New-Object Microsoft.IIS.Powershell.Commands.GetIISSharedConfigCommand
+        foreach ($p in $c.Invoke()) {
+            $s += $p
+        }
+        return $s
+    } else {
+        return Get-IISSharedConfig
+    }
+}
+
+function Enable-IISSharedConfigPolyfill
+{
+    param(
+
+        [string]$PhysicalPath,
+        [string]$UserName,
+        [SecureString]$Password,
+        [SecureString]$KeyEncryptionPassword,
+        [switch]$DontCopyRemoteKeys = $false,
+        [switch]$Force = $false
+    )
+
+    if (!(Get-Command 'Enable-IISSharedConfig' -ErrorAction SilentlyContinue)) {
+        Write-Host "Executing polyfill for Enable-IISSharedConfig"
+
+        $s = @()
+        $c = New-Object Microsoft.IIS.Powershell.Commands.EnableIISSharedConfigCommand
+        $c.PhysicalPath = $PhysicalPath
+        $c.UserName = $UserName
+        $c.Password = $Password
+        $c.KeyEncryptionPassword = $KeyEncryptionPassword
+        $c.DontCopyRemoteKeys = $DontCopyRemoteKeys
+        $c.Force = $Force
+        foreach ($p in $c.Invoke()) {
+            $s += $p
+        }
+        return $s
+    } else {
+        return Enable-IISSharedConfig `
+            -PhysicalPath $PhysicalPath `
+            -UserName $UserName
+            -Password $Password
+            -KeyEncryptionPassword $KeyEncryptionPassword
+            -DontCopyRemoteKeys:$DontCopyRemoteKeys
+            -Force:$Force
+    }
+}
+
+function Disable-IISSharedConfigPolyfill()
+{
+    if (!(Get-Command 'Disable-IISSharedConfig' -ErrorAction SilentlyContinue)) {
+        Write-Host "Executing polyfill for Disable-IISSharedConfig"
+
+        $s = @()
+        $c = New-Object Microsoft.IIS.Powershell.Commands.DisableIISSharedConfigCommand
+        foreach ($p in $c.Invoke()) {
+            $s += $p
+        }
+        return $s
+    } else {
+        return Disable-IISSharedConfig
+    }
+}
+
 [DscResource()]
 class cIISSharedConfig
 {
@@ -181,7 +251,7 @@ class cIISSharedConfig
     #>
     [Hashtable] GetIISSharedConfig()
     {
-        $c = ConvertFrom-StringData ((Get-IISSharedConfig) -join "`r`n").Replace('\', '\\')
+        $c = ConvertFrom-StringData ((Get-IISSharedConfigPolyfill) -join "`r`n").Replace('\', '\\')
         return @{
             Enabled = $c['Enabled'] -eq 'True'
             PhysicalPath = $c['Physical Path']
@@ -210,14 +280,14 @@ class cIISSharedConfig
         if ($c) {
             Write-Verbose 'Enabling IIS Shared Configuration...'
             if ($UserCredential) {
-                Enable-IISSharedConfig `
+                Enable-IISSharedConfigPolyfill `
                     -PhysicalPath $PhysicalPath `
                     -UserName $UserCredential.UserName `
                     -Password (ConvertTo-SecureString -AsPlainText -Force $UserCredential.GetNetworkCredential().Password) `
                     -KeyEncryptionPassword $KeyEncryptionPassword `
                     -Force
             } else {
-                Enable-IISSharedConfig `
+                Enable-IISSharedConfigPolyfill `
                     -PhysicalPath $PhysicalPath `
                     -KeyEncryptionPassword $KeyEncryptionPassword `
                     -Force
@@ -236,7 +306,7 @@ class cIISSharedConfig
         $c = $this.GetIISSharedConfig();
         if ($c) {
             Write-Verbose 'Disabling IIS Shared Configuration...'
-            Disable-IISSharedConfig
+            Disable-IISSharedConfigPolyfill
             $c = $this.GetIISSharedConfig();
         }
         
